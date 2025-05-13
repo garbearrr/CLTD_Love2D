@@ -1,0 +1,20 @@
+{
+  "name": "cltd",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "watch": "npx tstl -p tsconfig.json --watch",
+    "build": "npx tstl -p tsconfig.json",
+    "love": "npm run build && love build",
+    "loveonly": "start \"C:\\Program Files\\LOVE\\love.exe\" \"C:\\Users\\sheer\\OneDrive\\Code\\Lua\\CLTD\\build\""
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "love-typescript-definitions": "^11.5.0",
+    "typescript": "^5.8.2",
+    "typescript-to-lua": "^1.31.0"
+  }
+}
