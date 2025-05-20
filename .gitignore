@@ -1,4 +1,7 @@
 build/*
+!build/assets/
+!build/assets/**
+
 noinclude/*
 node_modules/*
 
