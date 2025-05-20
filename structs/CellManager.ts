@@ -22,6 +22,18 @@ export namespace CellManager {
 
     const INPUT_LEN_LIMIT = 35; // max length of the input string
     const IO_TEXT_PAD = 0; // offset for the text in the cell
+
+    // Note: If dx and dy are BOTH manipulated the gen path code will need to be tweeked.
+    const DIR = [
+        { dx:  0, dy: -2 },   // N
+        { dx:  2, dy:  0 },   // E
+        //{ dx:  0, dy:  2 },   // S
+        { dx: -2, dy:  0 }    // W
+    ];
+    const MIN_MOVES_AFTER_UP = 3; // min moves after going up
+
+    export let startCell: ICell;
+    export let endCell: ICell;
     
     /** Global scale relative to BASE_H (1.0 == BASE_H)           */
     let scale = 1.0;
@@ -31,6 +43,7 @@ export namespace CellManager {
     const gameGrid = new Map<string, ICell>();
     let outputCell: ICell = new Cell(-10, -10, 0, 0, 0, 0);
     let inputCell: ICell = new Cell(-10, -10, 0, 0, 0, 0);
+    let cmdOffsetCol = 0;
 
     // Actual input for processing
     let input = "";
@@ -39,6 +52,7 @@ export namespace CellManager {
     // Max commands saved 30
     let CStack = new SetStack<string>(30); 
     let cidx = -1;
+
 
     export function rebuild(W: number, H :number): void {
         // 1. Calculate new height with scale
@@ -118,7 +132,115 @@ export namespace CellManager {
         outputCell = gameGrid.get(`${cmdOff + 1},${maxRows - 4}`) || outputCell;
 
         OStack = new OutputStack(maxCols - cmdOff - 2, maxRows - 4);
+        cmdOffsetCol = cmdOff;
+
+        generateRandomPath(1); // generate a random path
     }
+
+  /**
+   * Carve a single winding corridor between a random start on the bottom edge
+   * and a random end on the top edge, with `padding` cells of margin on all sides.
+   * If padding=0 the path may touch the very outer wall.
+   */
+  export function generateRandomPath(padding: number): void {
+    const pathPoints: Point[] = [];
+  
+    // 1) clamp & compute carve‐area bounds
+    padding = Math.max(0, padding);
+    const minX = padding + 1;
+    const maxX = cmdOffsetCol - padding - 1;
+    const minY = padding + 1;
+    const maxY = rows - padding - 2;
+  
+    // 2) pick random start on bottom
+    let curX = love.math.random(minX, maxX);
+    let curY = maxY;
+    pathPoints.push({ x: curX, y: curY });
+  
+    // persistent state
+    let lastDir = { dx: 0, dy: 0 };
+    let horizMovesRemaining = 0;
+  
+    // 3) carve until we hit the padding line
+    while (curY > minY) {
+      // 3a) all valid moves under your basic rules
+      let candidates = DIR.filter(d => {
+        if (d.dy > 0) return false;                          // no down
+        if (d.dy < 0 && lastDir.dy < 0) return false;        // no two ups in a row
+        if (d.dx !== 0 && (curX + d.dx < minX || curX + d.dx > maxX)) return false; // oob horiz
+        if (lastDir.dx !== 0 && d.dx !== 0 && d.dx + lastDir.dx === 0) return false; // no backtrack
+        return true;
+      });
+  
+      // 3b) if we owe horizontal moves, try to do them
+      if (horizMovesRemaining > 0) {
+        // filter down to horizontal candidates
+        const horizCand = candidates.filter(d => d.dx !== 0);
+        if (horizCand.length > 0) {
+          candidates = horizCand;
+        } else {
+          // **no** horizontal possible: force one up, reset debt
+          const up = DIR.find(d => d.dy < 0);
+          if (up) {
+            candidates = [up];
+            horizMovesRemaining = 0;
+          }
+        }
+      }
+  
+      // 3c) pick your move
+      if (candidates.length === 0) {
+        throw "generateRandomPath: no moves left—breaking early.";
+        break;
+      }
+      const d = candidates[love.math.random(0, candidates.length - 1)];
+  
+      // if this *is* an up move, enqueue your next horizontals
+      if (d.dy < 0) horizMovesRemaining = MIN_MOVES_AFTER_UP;
+  
+      // 3d) carve through the “in‐betweens”
+      if (d.dx === 0) {
+        // vertical
+        const step = Math.sign(d.dy);
+        for (let y = curY + step; y !== curY + d.dy + step; y += step) {
+          pathPoints.push({ x: curX, y });
+        }
+      } else {
+        // horizontal
+        const step = Math.sign(d.dx);
+        for (let x = curX + step; x !== curX + d.dx + step; x += step) {
+          pathPoints.push({ x, y: curY });
+        }
+        horizMovesRemaining = Math.max(0, horizMovesRemaining - 1);
+      }
+  
+      // 3e) perform the jump and record it
+      curX += d.dx;
+      curY += d.dy;
+      pathPoints.push({ x: curX, y: curY });
+      lastDir = d;
+    }
+  
+    // 4) finally, link cells (skipping outside padding)
+    let lastCell: ICell | undefined;
+    for (const { x, y } of pathPoints) {
+      if (y < minY) continue;
+      const cell = gameGrid.get(`${x},${y}`);
+      if (!cell) continue;
+      cell.setColor(1, 1, 1, 1);
+      cell.setCharColor(0, 0, 0, 1);
+      cell.immutable = true;
+      if (lastCell) {
+        lastCell.setNext(cell);
+        cell.setLast(lastCell);
+      }
+      lastCell = cell;
+      if (!startCell) startCell = cell;
+    }
+
+    endCell = lastCell || startCell;
+  }
+  
 
     export function flashAll(lifetime: number): void {
         const order: ICell[] = [];

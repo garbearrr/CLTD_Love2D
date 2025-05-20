@@ -1,6 +1,6 @@
 import * as utf8 from "utf8";
 
-export class StringColor {
+export class StringColor implements IStringColor {
     colorData: { from: number; to: number; color: Color }[];
     private s: string
 
@@ -52,6 +52,11 @@ export class StringColor {
             if (index >= from && index < to) return color;
         }
         return undefined;
+    }
+
+    reset(): this {
+        this.colorData = [];
+        return this;
     }
 
     utf8Length(): number {

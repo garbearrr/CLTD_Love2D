@@ -1,6 +1,7 @@
-import { getFont } from "./FontCache";
+import { ENEMY_PRIO } from "./Const";
 import { PriorityQueue } from "./PriorityQueue";
 import { SpriteFont } from "./SpriteFont";
+import { StringColor } from "./StringColor";
 
 // src/Cell.ts
 export class Cell implements ICell {
@@ -17,10 +18,10 @@ export class Cell implements ICell {
   public border = false;
   public cursor = false;
 
-  private readonly char = new PriorityQueue<{char: string, p: number}>((a, b) => a.p > b.p);
+  private readonly char = new PriorityQueue<{char: IStringColor, p: number, id: number}>((a, b) => a.p > b.p);
 
   private color = { r: 0, g: 0, b: 0, a: 1 };
-  private charColor = { r: 1, g: 1, b: 1, a: 1 };
+  private charColor = { r: 1, g: 1, b: 1, a: 1 }; // default color for the character
   private charSizeOffset = 0; // cell height + this offset
 
   private lines = {
@@ -54,18 +55,19 @@ export class Cell implements ICell {
     return this;
   }
 
-  pushChar(c: string, priority = -1): this {
-    this.char.enqueue({ char: c, p: priority });
+  pushCharSC(c: IStringColor, priority = -1, id = love.timer.getTime()): this {
+    this.char.enqueue({ char: c, p: priority, id});
     return this;
   }
 
-  setCharColor(r: number, g: number, b: number, a = 1): this {
-    this.charColor = { r, g, b, a };
-    return this;
+  pushChar(c: string, priority = -1, id = love.timer.getTime()): this {
+    return this.pushCharSC(new StringColor(c), priority, id);
   }
 
   removeAllCharWithPriority(priority: number): void {
-    this.char.removeAll((c) => c.p === priority);
+    //console.log(`before removal (p=${priority}):`, this.char.size());
+    this.char.removeAll(c => c.p === priority);
+    //console.log(` after removal (p=${priority}):`, this.char.size());
   }
 
   clearChars(): this {
@@ -117,11 +119,13 @@ export class Cell implements ICell {
 
   addEnemy(enemy: IBaseEnemy): this {
     this.enemies.set(enemy.id, enemy);
+    this.pushCharSC(enemy.icon, ENEMY_PRIO, enemy.id);
     return this;
   }
 
   removeEnemy(enemy: IBaseEnemy): this {
     this.enemies.delete(enemy.id);
+    this.char.remove((c) => c.id === enemy.id);
     return this;
   }
 
@@ -129,8 +133,13 @@ export class Cell implements ICell {
     return this.next;
   }
 
-  getChar(): string {
-    return this.char.peek()?.char || "";
+  getChar(): IStringColor {
+    return this.char.peek()?.char || new StringColor("");
+  }
+
+  setCharColor(r: number, g: number, b: number, a: number): this {
+    this.charColor = { r, g, b, a };
+    return this;
   }
 
   markBorder(): this {
@@ -146,7 +155,7 @@ export class Cell implements ICell {
   }
 
   private drawLines() {
-    love.graphics.setLineWidth(this.w * this.lineWidth);
+    /* love.graphics.setLineWidth(this.w * this.lineWidth);
     love.graphics.setLineJoin("none");
     love.graphics.setColor(this.lineColor.r, this.lineColor.g, this.lineColor.b, this.lineColor.a);
 
@@ -158,7 +167,71 @@ export class Cell implements ICell {
     if (this.lines.top) love.graphics.line(this.x + lw2, this.y, this.x + this.w - lw2, this.y);
     if (this.lines.bottom) love.graphics.line(this.x + lw2, this.y + this.h, this.x + this.w - lw2, this.y + this.h);
     if (this.lines.left) love.graphics.line(this.x, this.y + lw2, this.x, this.y + this.h - lw2);
-    if (this.lines.right) love.graphics.line(this.x + this.w, this.y + lw2, this.x + this.w, this.y + this.h - lw2);
+    if (this.lines.right) love.graphics.line(this.x + this.w, this.y + lw2, this.x + this.w, this.y + this.h - lw2); */
+  }
+
+  private drawChars() {
+      const char = this.char.peek();
+      if (!char) return;
+
+      // Find top four chars (if there are any)
+      const top = this.char.peekAtFirst(4);
+      const chars = [char];
+      for(const t of top.slice(1)) {
+        if (t.p !== char.p) break;
+        chars.push(t);
+      }
+
+      const pad = this.charSizeOffset;           //   ≥ 0
+      /* ─── 1. shrink the box by the padding  ─── */
+      const innerW = this.w - pad * 2;
+      const innerH = this.h - pad * 2;
+
+      // If there is only one top char, print over entire cell
+      if (chars.length === 1) {
+        /* ─── 2. pick a scale that fits the height  ─── */
+        const scale = SpriteFont.getScale(this.h - pad*2);
+
+        /* ─── 3. work out the glyph’s real size after scaling  ─── */
+        const glyphH = innerH;                     // by construction
+        const glyphW = (SpriteFont.CELL_W / SpriteFont.CELL_H) * (this.h - pad*2);         // keep aspect ratio
+
+        // how much empty space remains once the glyph is scaled:
+        const spareW  = innerW - glyphW
+        // ensure it’s an integer, then half it to centre:
+        const offsetX = Math.floor(spareW / 2)
+
+        // final draw coordinate:
+        const drawX   = this.x + pad + offsetX
+        const drawY   = this.y + pad   // do the same for Y if you need vertical centering
+
+        // DEBUG
+        //love.graphics.setColor(1,0,0,1)
+        //love.graphics.rectangle("line", drawX, drawY, glyphW, glyphH)
+
+        SpriteFont.print(chars[0].char.valueOf(), drawX, drawY, scale, chars[0].char.charAtIsColor(0) || this.charColor);
+      } else {
+        // If there are multiple chars print them in order: top left, top right, bottom left, bottom right
+        const glyphH = innerH / 2;               // by construction
+        const glyphW = SpriteFont.CELL_W / SpriteFont.CELL_H * glyphH;         // keep aspect ratio
+        const scale = SpriteFont.getScale(glyphH); // innerH / CELL_H
+
+        const drawX = this.x + pad;
+        const drawY = this.y + pad;
+
+        // Top left
+        SpriteFont.print(chars[0].char.valueOf(), drawX, drawY, scale, chars[0].char.charAtIsColor(0) || this.charColor);
+        // Bottom right
+        SpriteFont.print(chars[1].char.valueOf(), drawX + glyphW, drawY + glyphH, scale, chars[1].char.charAtIsColor(0) || this.charColor);
+
+        if (chars.length < 3) return;
+        // Top right
+        SpriteFont.print(chars[2].char.valueOf(), drawX + glyphW, drawY, scale, chars[2].char.charAtIsColor(0) || this.charColor);
+        
+        if (chars.length < 4) return;
+        // Bottom left
+        SpriteFont.print(chars[3].char.valueOf(), drawX, drawY + glyphH, scale, chars[3].char.charAtIsColor(0) || this.charColor);
+      }
   }
 
   draw() {
@@ -166,63 +239,11 @@ export class Cell implements ICell {
     love.graphics.setColor(this.color.r, this.color.g, this.color.b, this.color.a);
     love.graphics.rectangle("fill", this.x, this.y, this.w, this.h);
 
+    // DEBUG
+    //love.graphics.setColor(0,1,0,1)
+    //love.graphics.rectangle("line", this.x, this.y, this.w, this.h)
+
     this.drawLines();
-
-    // Character inside the cell (enemy)
-    const char = this.char.peek();
-    if (!char) return;
-
-    // Get up to top 4 chars with the same priority
-    const top = this.char.peekAtFirst(4);
-    const chars = [char];
-    for(const t of top.slice(1)) {
-      if (t.p !== char.p) break;
-      chars.push(t);
-    }
-
-    // If there is only one top char, print over entire cell
-    if (chars.length === 1) {
-        /* ─── 1. shrink the box by the padding  ─── */
-        const pad = this.charSizeOffset;           //   ≥ 0
-        const innerW = this.w - pad * 2;
-        const innerH = this.h - pad * 2;
-
-        /* ─── 2. pick a scale that fits the height  ─── */
-        const scale = SpriteFont.getScale(innerH); // innerH / CELL_H
-
-        /* ─── 3. work out the glyph’s real size after scaling  ─── */
-        const glyphH = innerH;                     // by construction
-        const glyphW = SpriteFont.CELL_W / SpriteFont.CELL_H * glyphH;         // keep aspect ratio
-
-        /* ─── 4. centre it inside the padded box  ─── */
-        const drawX = this.x + pad + (innerW - glyphW) / 2;
-        const drawY = this.y + pad;                // already centred vertically
-
-        SpriteFont.print(chars[0].char, drawX, drawY, scale, this.charColor);
-    }
-    // Otherwise we will divide the char size by 4 and print in the order: top left, bottom right, top right, bottom left
-    else {
-/*       const textW      = f.font.getWidth(chars[0].char);
-      const textH      = Math.floor((this.h + this.charSizeOffset) / 4);                         // height ≈ font size
-
-      // helpers to centre a glyph inside a quadrant
-      const quadW      = this.w / 2;
-      const quadH      = this.h / 2;
-      const cx         = (qx: number) => this.x + qx * quadW + (quadW - textW) / 2;
-      const cy         = (qy: number) => this.y + qy * quadH + (quadH - textH) / 2;
-
-      // order: TL, BR, TR, BL ──────────────
-      const targets: [number, number][] = [
-        [0, 0],   // top-left
-        [1, 1],   // bottom-right
-        [1, 0],   // top-right
-        [0, 1],   // bottom-left
-      ];
-
-      for (let i = 0; i < chars.length && i < targets.length; ++i) {
-        const [qx, qy] = targets[i];
-        love.graphics.print(chars[i].char, cx(qx), cy(qy));
-      } */
-    }
+    this.drawChars();
   }
 }

@@ -15,8 +15,7 @@ export namespace SpriteFont {
 
     /* ──────── colour helpers ──────── */
     /** Simple RGBA record (values 0–1). */
-    export type RGBA = { r: number; g: number; b: number; a?: number };
-    const WHITE: RGBA = { r: 1, g: 1, b: 1, a: 1 };
+    const WHITE: Color = { r: 1, g: 1, b: 1, a: 1 };
 
     /* ──────── state ──────── */
     let image!: Image;
@@ -25,6 +24,7 @@ export namespace SpriteFont {
     /* ──────── initialisation ──────── */
     export function initialize() {
         image = love.graphics.newImage(IMAGE_PATH);
+        image.setFilter("nearest", "nearest"); // no smoothing
 
         for (const [char, index] of CM.entries()) {
             const x = SHEET_X + ((index % SHEET_W) * (CELL_W + SHEET_X_PAD));
@@ -56,7 +56,7 @@ export namespace SpriteFont {
         x: number,
         y: number,
         scale: number,
-        col: RGBA = WHITE
+        col: Color = WHITE
     ) {
         // Preserve the existing colour so we don’t leak tint to caller.
         const [pr, pg, pb, pa] = love.graphics.getColor();

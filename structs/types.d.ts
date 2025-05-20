@@ -44,9 +44,9 @@ interface ICell {
   immutable: boolean;
 
   setColor(r: number, g: number, b: number, a: number): this;
-  pushChar(c: string, priority?: number): this;
+  pushChar(c: string, priority?: number, id?: number): this;
+  pushCharSC(c: IStringColor, priority?: number, id?: number): this;
   clearChars(): this;
-  setCharColor(r: number, g: number, b: number, a?: number): this;
   removeAllCharWithPriority(priority: number): void;
   setCharSizeOffset(offset: number): this;
   setLast(c: ICell | null): this;
@@ -61,12 +61,13 @@ interface ICell {
   addEnemy(enemy: IBaseEnemy): this;
   removeEnemy(enemy: IBaseEnemy): this;
   getNext(): ICell | null;
-  getChar(): string;
+  getChar(): IStringColor;
+  setCharColor(r: number, g: number, b: number, a: number): this;
 }
 
 interface IBaseEnemy {
   name: string;
-  icon: string;
+  icon: IStringColor;
   health: number;
   attack: number;
   defense: number;
@@ -76,6 +77,19 @@ interface IBaseEnemy {
   readonly id: number; // unique ID for this enemy
 
   destroy(): void;
+}
+
+interface IStringColor {
+  colorData: { from: number; to: number; color: Color }[];
+  valueOf(): string;
+  concat(...args: (string | IStringColor)[]): this;
+  color(c: Color): this;
+  colorRange(start: number, end: number, c: Color, elseColor?: Color): this;
+  colorize(...ranges: { start: number; end: number; color: Color }[]): this;
+  charAtIsColor(index: number): Color | undefined;
+  reset(): this;
+  utf8Length(): number;
+  toUTF8Array(): string[];
 }
 
 // Color.ts ---------------------------------------------------
